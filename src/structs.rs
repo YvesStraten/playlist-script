@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+pub enum Message {
+    Progress(String),
+}
+
+impl Message {
+    pub fn get_content(self) -> String {
+        match self {
+            Message::Progress(content) => content,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Playlist {
     pub number: u8,

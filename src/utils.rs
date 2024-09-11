@@ -1,8 +1,9 @@
 use std::{env, fs, io, path::PathBuf};
 
+use tokio::sync::mpsc::Sender;
 use ytd_rs::{error::YoutubeDLError, Arg, YoutubeDL};
 
-use crate::structs::Person;
+use crate::structs::{Message, Person};
 
 pub fn get_ffmpeg_txt() -> Result<String, io::Error> {
     let current_dir = env::current_dir()?;
@@ -33,6 +34,7 @@ pub fn get_ffmpeg_txt() -> Result<String, io::Error> {
 }
 
 pub async fn download(
+    tx: Sender<Message>,
     current_dir: PathBuf,
     args: Vec<Arg>,
     person: Person,
@@ -40,7 +42,7 @@ pub async fn download(
     match YoutubeDL::new(&current_dir, args, &person.link) {
         Ok(instance) => match instance.download() {
             Ok(_) => {
-                println!("Downloaded playlist {}", person.link);
+                let _ = tx.send(Message::Progress(format!("Downloaded playlist {}", person.link).to_string())).await;
                 Ok(())
             }
 

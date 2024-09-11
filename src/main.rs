@@ -1,11 +1,13 @@
-use serde::{Deserialize, Serialize};
-use structs::{Person, Playlist};
-use utils::{download, get_ffmpeg_txt};
 use std::{
-    env, error::Error, fs, io, path::PathBuf, process::{exit, Command, Stdio}
+    env,
+    error::Error,
+    fs, path::PathBuf,
+    process::{exit, Command, Stdio},
 };
-
-use ytd_rs::{error::YoutubeDLError, Arg, YoutubeDL};
+use structs::{Message, Playlist};
+use tokio::sync::mpsc;
+use utils::{download, get_ffmpeg_txt};
+use ytd_rs::Arg;
 
 mod structs;
 mod utils;
@@ -17,6 +19,15 @@ static LETTERS: [&str; 26] = [
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let (tx, mut rx) = mpsc::channel::<Message>(32);
+    tokio::spawn(async move {
+        loop {
+            while let Some(message) = rx.recv().await {
+                println!("[LOG] {}", message.get_content())
+            }
+        }
+    });
+
     let current_dir = env::current_dir().unwrap();
     let config_path: PathBuf = [current_dir.clone(), ".playlist.json".into()]
         .iter()
@@ -49,7 +60,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Arg::new_with_arg("-o", &format),
             ];
 
-            let handle = tokio::spawn(download(current_dir, args, person));
+            let handle = tokio::spawn(download(tx.clone(), current_dir, args, person));
             thread_handles.push(handle);
         }
 
@@ -61,7 +72,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        let txt_location: PathBuf = [current_dir, "videos.txt".into() ].iter().collect();
+        let txt_location: PathBuf = [current_dir, "videos.txt".into()].iter().collect();
         let final_string = get_ffmpeg_txt()?;
         fs::write(&txt_location, final_string)?;
 
@@ -77,10 +88,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .output();
 
         if let Ok(output) = ffmpeg_command {
-         println!("{}", String::from_utf8_lossy(&output.stdout));
-
-        } 
-
+            println!("{}", String::from_utf8_lossy(&output.stdout));
+        }
     } else {
         eprintln!("No playlist config found.. writing one");
         let content = serde_json::to_string_pretty(&Playlist::default())?;
