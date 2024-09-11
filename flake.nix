@@ -14,7 +14,7 @@
       {
         defaultPackage = naersk-lib.buildPackage ./.;
         devShell = with pkgs; mkShell {
-          buildInputs = [ cargo rustc rustfmt pre-commit rustPackages.clippy cargo-watch ];
+          buildInputs = [ cargo rustc rustfmt pre-commit rustPackages.clippy cargo-watch ] ++ (if stdenv.isDarwin then [ libiconv ] else [] );
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
       }
