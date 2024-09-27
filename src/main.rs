@@ -56,7 +56,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let current_dir = current_dir.clone();
 
             let args = vec![
-                Arg::new_with_arg("--recode-video", &playlist.format),
                 Arg::new_with_arg("-o", &format),
             ];
 
