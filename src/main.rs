@@ -1,13 +1,17 @@
 use std::{
     env,
     error::Error,
-    fs, path::PathBuf,
-    process::{exit, Command, Stdio},
+    fs,
+    path::PathBuf,
+    process::{exit, Stdio},
 };
 use structs::{Message, Playlist};
-use tokio::sync::mpsc;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+    sync::mpsc,
+};
 use utils::{download, get_ffmpeg_txt};
-use ytd_rs::Arg;
 
 mod structs;
 mod utils;
@@ -52,14 +56,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         for person in playlist.people {
             let letter = LETTERS[person.index];
             println!("{letter}");
-            let format = format!("%(playlist_index)02d{}.%(ext)s", letter);
             let current_dir = current_dir.clone();
 
-            let args = vec![
-                Arg::new_with_arg("-o", &format),
-            ];
-
-            let handle = tokio::spawn(download(tx.clone(), current_dir, args, person));
+            let handle = tokio::spawn(download(tx.clone(), current_dir, person, letter));
             thread_handles.push(handle);
         }
 
@@ -75,19 +74,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let final_string = get_ffmpeg_txt()?;
         fs::write(&txt_location, final_string)?;
 
-        let ffmpeg_command = Command::new("ffmpeg")
-            .arg("-f")
-            .arg("concat")
-            .arg("-safe")
-            .arg("0")
-            .arg("-i")
-            .arg(&txt_location)
-            .arg(format!("Playlist {}.{}", playlist.number, "mp4"))
-            .stdout(Stdio::piped())
-            .output();
+        let mut ffmpeg_command = Command::new("ffmpeg");
 
-        if let Ok(output) = ffmpeg_command {
-            println!("{}", String::from_utf8_lossy(&output.stdout));
+        ffmpeg_command.arg("-f");
+        ffmpeg_command.arg("concat");
+        ffmpeg_command.arg("-i");
+        ffmpeg_command.arg(&txt_location);
+        ffmpeg_command.arg("-filter:a");
+        ffmpeg_command.arg("loudnorm");
+        ffmpeg_command.arg(format!("Playlist {}.{}", playlist.number, playlist.format));
+        ffmpeg_command.stdout(Stdio::piped());
+
+        let mut child = ffmpeg_command.spawn().expect("Did not find ffmpeg!");
+        let stdout = child.stdout.take().expect("Not stdout to take!");
+
+        let mut reader = BufReader::new(stdout).lines();
+
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+        });
+
+        while let Some(outline) = reader.next_line().await? {
+            let _ = tx.send(Message::Progress(outline)).await;
         }
     } else {
         eprintln!("No playlist config found.. writing one");

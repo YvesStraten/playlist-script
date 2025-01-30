@@ -1,7 +1,10 @@
-use std::{env, fs, io, path::PathBuf};
+use std::{
+    env, fs,
+    path::{self, PathBuf},
+    process::Stdio,
+};
 
-use tokio::sync::mpsc::Sender;
-use ytd_rs::{error::YoutubeDLError, Arg, YoutubeDL};
+use tokio::{io::{self, AsyncBufReadExt, BufReader}, process::Command, sync::mpsc::Sender};
 
 use crate::structs::{Message, Person};
 
@@ -15,8 +18,13 @@ pub fn get_ffmpeg_txt() -> Result<String, io::Error> {
         let file_name = &file.file_name().into_string();
 
         if let Ok(name) = file_name {
-            let formatted_filename = format!("file {}'", name);
-            file_names.push(formatted_filename);
+            let ext = path::Path::new(name).extension();
+            if let Some(ext) = ext {
+                if ext != "json" {
+                    let formatted_filename = format!("file {}'", name);
+                    file_names.push(formatted_filename);
+                }
+            }
         }
     }
 
@@ -36,20 +44,39 @@ pub fn get_ffmpeg_txt() -> Result<String, io::Error> {
 pub async fn download(
     tx: Sender<Message>,
     current_dir: PathBuf,
-    args: Vec<Arg>,
     person: Person,
-) -> Result<(), YoutubeDLError> {
-    match YoutubeDL::new(&current_dir, args, &person.link) {
-        Ok(instance) => match instance.download() {
-            Ok(_) => {
-                let _ = tx.send(Message::Progress(format!("Downloaded playlist {}", person.link).to_string())).await;
-                Ok(())
+    letter: &str,
+) -> io::Result<()> {
+    let mut command = Command::new("yt-dlp");
+    command.arg(&person.link);
+    let format = format!("%(playlist_index)02d{}.%(ext)s", letter);
+    command.arg("-o");
+    command.arg(format);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::piped());
+
+    let mut child = command.spawn().expect("Failed to spawn yt-dlp!");
+    let stdout = child.stdout.take().expect("No handle to stdout!");
+
+    let mut reader = BufReader::new(stdout).lines();
+
+    let tx2 = tx.clone();
+    let _ = tx2.send(Message::Progress(format!("Downloading {}", &person.link))).await;
+    tokio::spawn(async move {
+        let status = child.wait().await;
+
+        if let Ok(code) = status {
+            if code.success() {
+                let _ = tx2.send(Message::Progress("DONE!".to_string()));
+                
             }
+            
+        }
+    });
 
-            Err(e) => Err(e),
-        },
-
-        Err(e) => Err(e),
+    while let Some(outline) = reader.next_line().await? {
+        let _ = tx.send(Message::Progress(outline)).await;
     }
-}
 
+    Ok(())
+}

@@ -22,9 +22,9 @@
         defaultPackage = (naersk-lib.buildPackage ./.).overrideAttrs (
           o:
           let
-            yt-dlp = pkgs.yt-dlp.overrideAttrs (o: {
-              version = "2024.10.16.232911.dev0";
-            });
+            # yt-dlp = pkgs.yt-dlp.overrideAttrs (o: {
+            #   version = "2025.1.26 ";
+            # });
           in
           {
             buildInputs = o.buildInputs ++ [ pkgs.makeWrapper ];
@@ -32,7 +32,7 @@
               wrapProgram $out/bin/playlist \
               --set PATH ${
                 nixpkgs.lib.makeBinPath [
-                  yt-dlp
+                  pkgs.yt-dlp
                   pkgs.ffmpeg
                 ]
               }
@@ -44,6 +44,7 @@
           mkShell {
             buildInputs = [
               cargo
+              rust-analyzer
               rustc
               rustfmt
               pre-commit
