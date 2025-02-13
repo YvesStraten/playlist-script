@@ -1,25 +1,18 @@
 use std::{
-    env,
-    error::Error,
-    fs,
-    path::PathBuf,
-    process::{exit, Stdio},
+    env, error::Error, fs, path::PathBuf, process::{exit, Stdio}, sync::{Arc, Mutex}, time::Duration
 };
-use structs::{Message, Playlist};
+use structs::{LetterGenerator, Message, Playlist};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
-    sync::mpsc,
+    sync::mpsc, task::JoinSet,
 };
+use tokio_stream::StreamExt;
 use utils::{download, get_ffmpeg_txt};
 
 mod structs;
 mod utils;
 
-static LETTERS: [&str; 26] = [
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
-    "T", "U", "V", "W", "X", "Y", "Z",
-];
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -51,20 +44,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Err(e) => eprintln!("{e}"),
         }
 
-        let mut thread_handles = vec![];
+        let mut join_set = JoinSet::new();
+        let mut generator = LetterGenerator::new();
 
         for person in playlist.people {
-            let letter = LETTERS[person.index];
-            println!("{letter}");
             let current_dir = current_dir.clone();
+            let letter = generator.next().await.unwrap().0;
 
-            let handle = tokio::spawn(download(tx.clone(), current_dir, person, letter));
-            thread_handles.push(handle);
+            let _ = join_set.spawn(download(tx.clone(), current_dir, person, letter));
         }
 
-        for handle in thread_handles.into_iter() {
-            let join_result = handle.await;
-
+        for join_result in join_set.join_all().await {
             if let Err(e) = join_result {
                 eprintln!("{e}");
             }

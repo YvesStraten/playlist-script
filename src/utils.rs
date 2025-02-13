@@ -45,7 +45,7 @@ pub async fn download(
     tx: Sender<Message>,
     current_dir: PathBuf,
     person: Person,
-    letter: &str,
+    letter: String,
 ) -> io::Result<()> {
     let mut command = Command::new("yt-dlp");
     command.arg(&person.link);
