@@ -7,6 +7,7 @@ use std::{
 use tokio::{io::{self, AsyncBufReadExt, BufReader}, process::Command, sync::mpsc::Sender};
 
 use crate::structs::{Message, Person};
+use letter_gen::LetterSequence;
 
 pub fn get_ffmpeg_txt() -> Result<String, io::Error> {
     let current_dir = env::current_dir()?;
@@ -45,7 +46,7 @@ pub async fn download(
     tx: Sender<Message>,
     current_dir: PathBuf,
     person: Person,
-    letter: String,
+    letter: LetterSequence,
 ) -> io::Result<()> {
     let mut command = Command::new("yt-dlp");
     command.arg(&person.link);
