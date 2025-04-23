@@ -4,40 +4,38 @@ use std::{
     process::Stdio,
 };
 
+use ez_ffmpeg::Input;
 use tokio::{io::{self, AsyncBufReadExt, BufReader}, process::Command, sync::mpsc::Sender};
 
 use crate::structs::{Message, Person};
 use letter_gen::LetterSequence;
 
-pub fn get_ffmpeg_txt() -> Result<String, io::Error> {
+pub fn get_ffmpeg_files() -> Result<Vec<Input>, io::Error> {
     let current_dir = env::current_dir()?;
     let dir = fs::read_dir(&current_dir)?;
 
     let mut file_names = vec![];
     for file in dir {
         let file = file?;
-        let file_name = &file.file_name().into_string();
+        let file_name = file.file_name().into_string();
 
         if let Ok(name) = file_name {
-            let ext = path::Path::new(name).extension();
+            let ext = path::Path::new(&name).extension();
             if let Some(ext) = ext {
                 if ext != "json" {
-                    let formatted_filename = format!("file {}'", name);
-                    file_names.push(formatted_filename);
+                    file_names.push(name);
                 }
             }
         }
     }
 
-    let final_string: String = file_names
+    file_names.sort();
+    let final_string: Vec<Input> = file_names
         .into_iter()
-        .map(|name| {
-            let string = format!("{} \n", name);
-            string
+        .map(|name| { println!("{name}"); let input: Input = name.into();
+            input.set_hwaccel("cuda").set_video_codec("h264_cuvid")
         })
-        .collect::<String>();
-
-    println!("{final_string}");
+        .collect();
 
     Ok(final_string)
 }
@@ -68,10 +66,8 @@ pub async fn download(
 
         if let Ok(code) = status {
             if code.success() {
-                let _ = tx2.send(Message::Progress("DONE!".to_string()));
-                
+                let _ = tx2.send(Message::Progress("DONE!".to_string())).await;
             }
-            
         }
     });
 

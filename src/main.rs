@@ -1,13 +1,14 @@
 use std::{
     env, error::Error, fs, path::PathBuf, process::{exit, Stdio}, sync::{Arc, Mutex}, time::Duration
 };
+use ez_ffmpeg::{FfmpegContext, Output};
 use letter_gen::LetterGenerator;
 use structs::{Message, Playlist};
 use tokio::{
     sync::mpsc, task::JoinSet,
 };
 use tokio_stream::StreamExt;
-use utils::{download, get_ffmpeg_txt};
+use utils::{download, get_ffmpeg_files};
 
 mod structs;
 mod utils;
@@ -49,6 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let current_dir = current_dir.clone();
             let letter = generator.next().await.unwrap();
 
+
             let _ = join_set.spawn(download(tx.clone(), current_dir, person, letter));
         }
 
@@ -58,33 +60,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        // let txt_location: PathBuf = [current_dir, "videos.txt".into()].iter().collect();
-        // let final_string = get_ffmpeg_txt()?;
-        // fs::write(&txt_location, final_string)?;
-        //
-        // let mut ffmpeg_command = Command::new("ffmpeg");
-        //
-        // ffmpeg_command.arg("-f");
-        // ffmpeg_command.arg("concat");
-        // ffmpeg_command.arg("-i");
-        // ffmpeg_command.arg(&txt_location);
-        // ffmpeg_command.arg("-filter:a");
-        // ffmpeg_command.arg("loudnorm");
-        // ffmpeg_command.arg(format!("Playlist {}.{}", playlist.number, playlist.format));
-        // ffmpeg_command.stdout(Stdio::piped());
-        //
-        // let mut child = ffmpeg_command.spawn().expect("Did not find ffmpeg!");
-        // let stdout = child.stdout.take().expect("Not stdout to take!");
-        //
-        // let mut reader = BufReader::new(stdout).lines();
-        //
-        // tokio::spawn(async move {
-        //     let _ = child.wait().await;
-        // });
-        //
-        // while let Some(outline) = reader.next_line().await? {
-        //     let _ = tx.send(Message::Progress(outline)).await;
-        // }
+        let ffmpeg_files = get_ffmpeg_files()?;
+        let output: Output = format!("Playlist_{}.{}", playlist.number, playlist.format).into();
+        let output = output.set_video_codec("h264_nvenc");
+
+        FfmpegContext::builder()
+            .inputs(ffmpeg_files)
+            .filter_desc("concat=n=3:v=1:a=1")
+            // .filter_desc("loudnorm")
+            .output(output)
+            .build().unwrap()
+            .start().unwrap()
+            .await?;
     } else {
         eprintln!("No playlist config found.. writing one");
         let content = serde_json::to_string_pretty(&Playlist::default())?;
